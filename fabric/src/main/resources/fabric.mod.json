@@ -3,17 +3,27 @@
   "id": "random_keys_survival",
   "version": "${version}",
   "name": "Random Keys Survival",
-  "description": "Damage scrambles one enabled key mapping; multiplayer layouts rotate every three minutes.",
-  "authors": ["Ray20123315"],
+  "description": "Damage changes one enabled control; multiplayer layouts rotate every three minutes.",
+  "authors": [
+    "Ray20123315"
+  ],
   "environment": "*",
   "entrypoints": {
-    "main": ["com.ray.randomkeys.fabric.RandomKeysFabric"],
-    "client": ["com.ray.randomkeys.fabric.RandomKeysFabricClient"]
+    "main": [
+      "com.ray.randomkeys.fabric.RandomKeysFabric"
+    ],
+    "client": [
+      "com.ray.randomkeys.fabric.RandomKeysFabricClient"
+    ]
   },
   "depends": {
     "fabricloader": ">=0.15.0",
     "fabric-api": "*",
     "minecraft": "~1.20.1",
     "java": ">=17"
-  }
+  },
+  "license": "All Rights Reserved",
+  "mixins": [
+    "random_keys_survival.mixins.json"
+  ]
 }
