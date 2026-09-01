@@ -30,6 +30,17 @@ public final class RandomKeysFabricClient implements ClientModInitializer {
     private static final Set<String> enabledKeys = new LinkedHashSet<>();
     private static final Map<String, InputUtil.Key> originalKeys = new HashMap<>();
     private static final Map<String, InputUtil.Key> lockedLayout = new LinkedHashMap<>();
+    private static final List<String> LEFT_HUD_KEYS = List.of(
+            "key.forward", "key.left", "key.back", "key.right",
+            "key.jump", "key.attack", "key.use", "key.sneak",
+            "key.inventory", "key.drop", "key.swapOffhand"
+    );
+    private static final List<String> RIGHT_HUD_KEYS = List.of(
+            "key.hotbar.1", "key.hotbar.2", "key.hotbar.3", "key.hotbar.4", "key.hotbar.5",
+            "key.hotbar.6", "key.hotbar.7", "key.hotbar.8", "key.hotbar.9"
+    );
+    private static final int HUD_UNCHANGED_COLOR = 0x55FF55;
+    private static final int HUD_CHANGED_COLOR = 0xFF5555;
     private static long lastLockWarningMs;
 
     @Override
@@ -209,33 +220,61 @@ public final class RandomKeysFabricClient implements ClientModInitializer {
     private static void renderHud(DrawContext context, float tickDelta) {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client.player == null || client.options == null || client.options.hudHidden) return;
-        List<KeyBinding> rows = new ArrayList<>();
+
+        List<String> leftIds = new ArrayList<>();
+        List<String> rightIds = new ArrayList<>();
+        for (String id : LEFT_HUD_KEYS) if (enabledKeys.contains(id) && findBinding(id) != null) leftIds.add(id);
+        for (String id : RIGHT_HUD_KEYS) if (enabledKeys.contains(id) && findBinding(id) != null) rightIds.add(id);
         for (String id : enabledKeys) {
-            KeyBinding binding = findBinding(id);
-            if (binding != null) rows.add(binding);
+            if (LEFT_HUD_KEYS.contains(id) || RIGHT_HUD_KEYS.contains(id)) continue;
+            if (findBinding(id) != null) rightIds.add(id);
         }
-        if (rows.isEmpty()) return;
+        if (leftIds.isEmpty() && rightIds.isEmpty()) return;
 
         int padding = 5;
+        int gap = 10;
         int lineHeight = client.textRenderer.fontHeight + 2;
-        int width = 0;
-        List<Text> lines = new ArrayList<>();
-        for (KeyBinding binding : rows) {
-            Text line = Text.translatable(binding.getTranslationKey()).copy()
-                    .append(Text.literal(": "))
-                    .append(displayKey(binding));
-            lines.add(line);
-            width = Math.max(width, client.textRenderer.getWidth(line));
-        }
-        int x = context.getScaledWindowWidth() - width - padding * 2 - 4;
+        int leftWidth = hudColumnWidth(client, leftIds);
+        int rightWidth = hudColumnWidth(client, rightIds);
+        int columnGap = !leftIds.isEmpty() && !rightIds.isEmpty() ? gap : 0;
+        int totalWidth = leftWidth + columnGap + rightWidth;
+        int rows = Math.max(leftIds.size(), rightIds.size());
+        int x = context.getScaledWindowWidth() - totalWidth - padding * 2 - 4;
         int y = 6;
-        int height = lines.size() * lineHeight + padding * 2;
+        int height = rows * lineHeight + padding * 2;
         context.fill(x - 2, y - 2, context.getScaledWindowWidth() - 4, y + height, 0x88000000);
-        int ty = y + padding;
-        for (Text line : lines) {
-            context.drawTextWithShadow(client.textRenderer, line, x + padding, ty, 0xFFFFFF);
+
+        int leftX = x + padding;
+        int rightX = leftX + leftWidth + columnGap;
+        drawHudColumn(context, client, leftIds, leftX, y + padding, lineHeight);
+        drawHudColumn(context, client, rightIds, rightX, y + padding, lineHeight);
+    }
+
+    private static int hudColumnWidth(MinecraftClient client, List<String> ids) {
+        int width = 0;
+        for (String id : ids) {
+            KeyBinding binding = findBinding(id);
+            if (binding != null) width = Math.max(width, client.textRenderer.getWidth(hudLine(binding)));
+        }
+        return width;
+    }
+
+    private static void drawHudColumn(DrawContext context, MinecraftClient client, List<String> ids, int x, int y, int lineHeight) {
+        int ty = y;
+        for (String id : ids) {
+            KeyBinding binding = findBinding(id);
+            if (binding == null) continue;
+            InputUtil.Key original = originalKeys.get(id);
+            int color = original != null && original.equals(boundKey(binding)) ? HUD_UNCHANGED_COLOR : HUD_CHANGED_COLOR;
+            context.drawTextWithShadow(client.textRenderer, hudLine(binding), x, ty, color);
             ty += lineHeight;
         }
+    }
+
+    private static Text hudLine(KeyBinding binding) {
+        return Text.translatable(binding.getTranslationKey()).copy()
+                .append(Text.literal(": "))
+                .append(displayKey(binding));
     }
 
     private static Text displayKey(KeyBinding binding) {
