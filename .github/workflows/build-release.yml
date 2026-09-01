@@ -31,9 +31,9 @@ jobs:
         run: |
           mkdir -p dist
           if [ "${{ matrix.loader }}" = "fabric" ]; then
-            cp fabric/build/libs/random-keys-survival-fabric-0.3.1.jar dist/
+            cp fabric/build/libs/random-keys-survival-fabric-0.3.2.jar dist/
           else
-            cp forge/build/libs/random-keys-survival-forge-0.3.1.jar dist/
+            cp forge/build/libs/random-keys-survival-forge-0.3.2.jar dist/
           fi
       - uses: actions/upload-artifact@v4
         with:
@@ -57,8 +57,52 @@ jobs:
         shell: bash
         run: |
           TAG="v$(cat VERSION)-build.${GITHUB_RUN_NUMBER}"
+          cat > release-notes.md <<'EOF'
+          ## 繁體中文
+          - Minecraft Java 1.20.1，提供 Fabric 與 Forge 版本。
+          - 每次玩家實際受傷只隨機改變 1 個白名單按鍵功能，結果可為常見 PC 鍵、小鍵盤數字／運算鍵或未指定。
+          - 排除 World 1/2、無效 key.keyboard.xx、F13-F25、Windows/Super 等不符合一般鍵盤需求的鍵；舊配置中的異常鍵位會自動修正。
+          - HUD 固定在右上角分成左右兩欄：核心操作在左，快捷欄 1-9 在右；原始鍵位為綠色，已改變為紅色。
+          - 小鍵盤數字顯示為「小鍵盤0」到「小鍵盤9」。
+          - 其他原版／Mod KeyMapping 預設不修改、不顯示，需使用 /randomkeys add <translation-key> 加入。
+          - 伺服器保存玩家亂鍵配置，重新連線會先恢復伺服器配置；設定頁無法覆蓋已納入亂鍵的按鍵。
+          - 每 3 分鐘交換玩家整套亂鍵配置：1 人不換、2 人互換、3 人以上形成隨機循環。
+          - 交換／改鍵前會清除按住狀態，避免卡住持續移動；快捷欄受控時禁止滑鼠滾輪切換。
+          - 創造／冒險／旁觀模式預設禁止，OP 可用 /!c 暫時開啟個人維護模式；keepInventory 持續強制為 false。
+          - 支援繁體中文、簡體中文與英文。
+          - Copyright © 2026 Ray20123315. All Rights Reserved. 完整條款見 LICENSE。
+
+          ## 简体中文
+          - Minecraft Java 1.20.1，提供 Fabric 与 Forge 版本。
+          - 每次玩家实际受伤只随机改变 1 个白名单按键功能，结果可为常见 PC 键、小键盘数字／运算键或未指定。
+          - 排除 World 1/2、无效 key.keyboard.xx、F13-F25、Windows/Super 等不符合普通键盘需求的键；旧配置中的异常键位会自动修正。
+          - HUD 固定在右上角并分成左右两栏：核心操作在左，快捷栏 1-9 在右；原始键位显示绿色，已改变显示红色。
+          - 小键盘数字显示为“小键盘0”到“小键盘9”。
+          - 其他原版／Mod KeyMapping 默认不修改、不显示，需要使用 /randomkeys add <translation-key> 加入。
+          - 服务器保存玩家乱键配置，重新连接会先恢复服务器配置；设置页面无法覆盖已纳入乱键的按键。
+          - 每 3 分钟交换玩家整套乱键配置：1 人不换、2 人互换、3 人以上形成随机循环。
+          - 交换／改键前会清除按住状态，避免卡住持续移动；快捷栏受控时禁止鼠标滚轮切换。
+          - 创造／冒险／旁观模式默认禁止，OP 可用 /!c 暂时开启个人维护模式；keepInventory 持续强制为 false。
+          - 支持繁体中文、简体中文和英文。
+          - Copyright © 2026 Ray20123315. All Rights Reserved. 完整条款见 LICENSE。
+
+          ## English
+          - Minecraft Java 1.20.1 with Fabric and Forge builds.
+          - Each accepted player damage event changes exactly one whitelisted control to a common PC key, an allowed numpad key/operator, or Unbound.
+          - World 1/2, unnamed key.keyboard.xx gaps, F13-F25, Windows/Super and other unsuitable keys are excluded; legacy bad saved values are sanitized.
+          - The HUD is anchored at the upper-right in two columns: core controls on the left and hotbar 1-9 on the right; original bindings are green and changed bindings are red.
+          - Numpad digits are displayed as Numpad 0 through Numpad 9.
+          - Other vanilla/mod KeyMappings are untouched and hidden until added with /randomkeys add <translation-key>.
+          - The server persists scrambled layouts across reconnects, and managed Controls cannot be overridden from the settings screen.
+          - Every 3 minutes: 1 player = no-op, 2 players = mutual swap, 3+ players = one randomized cycle.
+          - Held-key state is cleared before mutations/exchanges to prevent stuck movement; mouse-wheel hotbar switching is blocked while hotbar mappings are managed.
+          - Creative/Adventure/Spectator are blocked by default; OPs can use /!c for a temporary personal maintenance bypass; keepInventory is continuously forced to false.
+          - Traditional Chinese, Simplified Chinese and English are included.
+          - Copyright © 2026 Ray20123315. All Rights Reserved. See LICENSE for the complete terms.
+          EOF
+          TAG="v$(cat VERSION)-build.${GITHUB_RUN_NUMBER}"
           gh release create "$TAG" dist/*.jar \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "Random Keys Survival $(cat VERSION) (build ${GITHUB_RUN_NUMBER})" \
-            --notes "Minecraft 1.20.1 Fabric + Forge. One enabled mapping changes per damage; random results are restricted to common PC keys (plus explicitly allowed numpad keys and Unbound), with invalid/uncommon legacy GLFW values sanitized; layouts persist across reconnects and rotate every 3 minutes; mouse-wheel hotbar switching is blocked; non-survival modes require /!c maintenance bypass; keepInventory is forced off; zh_tw/zh_cn/en_us localization included."
+            --notes-file release-notes.md
