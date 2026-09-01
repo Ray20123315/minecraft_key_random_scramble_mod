@@ -49,8 +49,10 @@ public final class RandomKeysForge {
     public static final int SWAP_INTERVAL_TICKS = 20 * 60 * 3;
     public static final List<String> DEFAULT_KEYS = List.of(
             "key.forward", "key.left", "key.back", "key.right",
-            "key.jump", "key.sneak", "key.sprint", "key.inventory",
-            "key.swapOffhand", "key.drop", "key.playerlist", "key.pickItem"
+            "key.jump", "key.attack", "key.use", "key.sneak",
+            "key.inventory", "key.drop", "key.swapOffhand",
+            "key.hotbar.1", "key.hotbar.2", "key.hotbar.3", "key.hotbar.4", "key.hotbar.5",
+            "key.hotbar.6", "key.hotbar.7", "key.hotbar.8", "key.hotbar.9"
     );
 
     private static final String PROTOCOL = "2";
@@ -124,7 +126,7 @@ public final class RandomKeysForge {
     public void onCommands(RegisterCommandsEvent event) {
         event.getDispatcher().register(Commands.literal("randomkeys")
                 .then(Commands.literal("list").executes(ctx -> {
-                    ctx.getSource().sendSuccess(() -> Component.literal("Random Keys: " + String.join(", ", enabledKeys)), false);
+                    ctx.getSource().sendSuccess(() -> Component.translatable("random_keys_survival.command.list", String.join(", ", enabledKeys)), false);
                     return 1;
                 }))
                 .then(Commands.literal("add").requires(source -> source.hasPermission(2))
@@ -134,9 +136,9 @@ public final class RandomKeysForge {
                             if (enabledKeys.add(key)) {
                                 saveConfig();
                                 broadcastSync(ctx.getSource().getServer());
-                                ctx.getSource().sendSuccess(() -> Component.literal("Added: " + key), true);
+                                ctx.getSource().sendSuccess(() -> Component.translatable("random_keys_survival.command.added", key), true);
                             } else {
-                                ctx.getSource().sendFailure(Component.literal("Already enabled: " + key));
+                                ctx.getSource().sendFailure(Component.translatable("random_keys_survival.command.already_enabled", key));
                             }
                             return 1;
                         })))
@@ -147,9 +149,9 @@ public final class RandomKeysForge {
                                 removeKeyFromSnapshots(key);
                                 saveConfig();
                                 broadcastSync(ctx.getSource().getServer());
-                                ctx.getSource().sendSuccess(() -> Component.literal("Removed: " + key), true);
+                                ctx.getSource().sendSuccess(() -> Component.translatable("random_keys_survival.command.removed", key), true);
                             } else {
-                                ctx.getSource().sendFailure(Component.literal("Not enabled: " + key));
+                                ctx.getSource().sendFailure(Component.translatable("random_keys_survival.command.not_enabled", key));
                             }
                             return 1;
                         })))
@@ -159,7 +161,7 @@ public final class RandomKeysForge {
                     trimSnapshotsToWhitelist();
                     saveConfig();
                     broadcastSync(ctx.getSource().getServer());
-                    ctx.getSource().sendSuccess(() -> Component.literal("Random Keys whitelist reset to defaults."), true);
+                    ctx.getSource().sendSuccess(() -> Component.translatable("random_keys_survival.command.reset"), true);
                     return 1;
                 })));
 
@@ -169,11 +171,11 @@ public final class RandomKeysForge {
                     ServerPlayer player = ctx.getSource().getPlayerOrException();
                     UUID uuid = player.getUUID();
                     if (maintenanceBypass.add(uuid)) {
-                        ctx.getSource().sendSuccess(() -> Component.literal("維護模式已啟用：現在可使用創造／冒險／旁觀；離線後自動失效。"), false);
+                        ctx.getSource().sendSuccess(() -> Component.translatable("random_keys_survival.maintenance.enabled"), false);
                     } else {
                         maintenanceBypass.remove(uuid);
                         if (player.gameMode.getGameModeForPlayer() != GameType.SURVIVAL) player.setGameMode(GameType.SURVIVAL);
-                        ctx.getSource().sendSuccess(() -> Component.literal("維護模式已關閉：已鎖回生存模式。"), false);
+                        ctx.getSource().sendSuccess(() -> Component.translatable("random_keys_survival.maintenance.disabled"), false);
                     }
                     return 1;
                 }));
@@ -339,7 +341,7 @@ public final class RandomKeysForge {
         for (int k = 257; k <= 269; k++) keys.add(k); // Escape (256) intentionally excluded.
         for (int k = 280; k <= 284; k++) keys.add(k);
         for (int k = 290; k <= 314; k++) keys.add(k);
-        for (int k = 320; k <= 336; k++) keys.add(k);
+        for (int k = 320; k <= 336; k++) keys.add(k); // Keypad 0-9 and keypad operators; valid even if hardware lacks a numpad.
         for (int k = 340; k <= 348; k++) keys.add(k);
         return keys.stream().mapToInt(Integer::intValue).toArray();
     }
