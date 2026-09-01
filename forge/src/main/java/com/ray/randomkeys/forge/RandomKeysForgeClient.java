@@ -30,6 +30,17 @@ public final class RandomKeysForgeClient {
     private static final Set<String> enabledKeys = new LinkedHashSet<>();
     private static final Map<String, InputConstants.Key> originalKeys = new HashMap<>();
     private static final Map<String, InputConstants.Key> lockedLayout = new LinkedHashMap<>();
+    private static final List<String> LEFT_HUD_KEYS = List.of(
+            "key.forward", "key.left", "key.back", "key.right",
+            "key.jump", "key.attack", "key.use", "key.sneak",
+            "key.inventory", "key.drop", "key.swapOffhand"
+    );
+    private static final List<String> RIGHT_HUD_KEYS = List.of(
+            "key.hotbar.1", "key.hotbar.2", "key.hotbar.3", "key.hotbar.4", "key.hotbar.5",
+            "key.hotbar.6", "key.hotbar.7", "key.hotbar.8", "key.hotbar.9"
+    );
+    private static final int HUD_UNCHANGED_COLOR = 0x55FF55;
+    private static final int HUD_CHANGED_COLOR = 0xFF5555;
     private static long lastLockWarningMs;
     private static boolean wasInWorld;
 
@@ -175,28 +186,61 @@ public final class RandomKeysForgeClient {
     private static void renderHud(GuiGraphics graphics, int screenWidth) {
         Minecraft client = Minecraft.getInstance();
         if (client.player == null || client.options.hideGui) return;
-        List<Component> lines = new ArrayList<>();
-        int width = 0;
+
+        List<String> leftIds = new ArrayList<>();
+        List<String> rightIds = new ArrayList<>();
+        for (String id : LEFT_HUD_KEYS) if (enabledKeys.contains(id) && findBinding(id) != null) leftIds.add(id);
+        for (String id : RIGHT_HUD_KEYS) if (enabledKeys.contains(id) && findBinding(id) != null) rightIds.add(id);
         for (String id : enabledKeys) {
+            if (LEFT_HUD_KEYS.contains(id) || RIGHT_HUD_KEYS.contains(id)) continue;
+            if (findBinding(id) != null) rightIds.add(id);
+        }
+        if (leftIds.isEmpty() && rightIds.isEmpty()) return;
+
+        int padding = 5;
+        int gap = 10;
+        int lineHeight = client.font.lineHeight + 2;
+        int leftWidth = hudColumnWidth(client, leftIds);
+        int rightWidth = hudColumnWidth(client, rightIds);
+        int columnGap = !leftIds.isEmpty() && !rightIds.isEmpty() ? gap : 0;
+        int totalWidth = leftWidth + columnGap + rightWidth;
+        int rows = Math.max(leftIds.size(), rightIds.size());
+        int x = screenWidth - totalWidth - padding * 2 - 4;
+        int y = 6;
+        int height = rows * lineHeight + padding * 2;
+        graphics.fill(x - 2, y - 2, screenWidth - 4, y + height, 0x88000000);
+
+        int leftX = x + padding;
+        int rightX = leftX + leftWidth + columnGap;
+        drawHudColumn(graphics, client, leftIds, leftX, y + padding, lineHeight);
+        drawHudColumn(graphics, client, rightIds, rightX, y + padding, lineHeight);
+    }
+
+    private static int hudColumnWidth(Minecraft client, List<String> ids) {
+        int width = 0;
+        for (String id : ids) {
+            KeyMapping binding = findBinding(id);
+            if (binding != null) width = Math.max(width, client.font.width(hudLine(binding)));
+        }
+        return width;
+    }
+
+    private static void drawHudColumn(GuiGraphics graphics, Minecraft client, List<String> ids, int x, int y, int lineHeight) {
+        int ty = y;
+        for (String id : ids) {
             KeyMapping binding = findBinding(id);
             if (binding == null) continue;
-            Component line = Component.translatable(binding.getName()).copy()
-                    .append(Component.literal(": "))
-                    .append(displayKey(binding));
-            lines.add(line);
-            width = Math.max(width, client.font.width(line));
-        }
-        if (lines.isEmpty()) return;
-        int padding = 5;
-        int lineHeight = client.font.lineHeight + 2;
-        int x = screenWidth - width - padding * 2 - 4;
-        int y = 6;
-        graphics.fill(x - 2, y - 2, screenWidth - 4, y + lines.size() * lineHeight + padding * 2, 0x88000000);
-        int ty = y + padding;
-        for (Component line : lines) {
-            graphics.drawString(client.font, line, x + padding, ty, 0xFFFFFF, true);
+            InputConstants.Key original = originalKeys.get(id);
+            int color = original != null && original.equals(binding.getKey()) ? HUD_UNCHANGED_COLOR : HUD_CHANGED_COLOR;
+            graphics.drawString(client.font, hudLine(binding), x, ty, color, true);
             ty += lineHeight;
         }
+    }
+
+    private static Component hudLine(KeyMapping binding) {
+        return Component.translatable(binding.getName()).copy()
+                .append(Component.literal(": "))
+                .append(displayKey(binding));
     }
 
     private static Component displayKey(KeyMapping binding) {
