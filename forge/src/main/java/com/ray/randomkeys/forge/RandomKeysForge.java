@@ -9,11 +9,15 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.GameRules;
+import net.minecraft.world.level.GameType;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.living.LivingDamageEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
+import net.minecraftforge.event.server.ServerStartedEvent;
+import net.minecraftforge.event.server.ServerStoppingEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.loading.FMLPaths;
@@ -33,6 +37,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -48,7 +53,7 @@ public final class RandomKeysForge {
             "key.swapOffhand", "key.drop", "key.playerlist", "key.pickItem"
     );
 
-    private static final String PROTOCOL = "1";
+    private static final String PROTOCOL = "2";
     public static final SimpleChannel CHANNEL = NetworkRegistry.ChannelBuilder
             .named(new ResourceLocation(MOD_ID, "main"))
             .networkProtocolVersion(() -> PROTOCOL)
@@ -59,12 +64,15 @@ public final class RandomKeysForge {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final Set<String> enabledKeys = new LinkedHashSet<>();
     private static final Map<UUID, LinkedHashMap<String, String>> snapshots = new ConcurrentHashMap<>();
+    private static final Set<UUID> maintenanceBypass = ConcurrentHashMap.newKeySet();
+    private static final Random RANDOM = new Random();
+    private static final int[] RANDOM_KEY_CODES = buildKeyboardPool();
     private static int ticksUntilSwap = SWAP_INTERVAL_TICKS;
 
     public RandomKeysForge() {
         loadConfig();
         int id = 0;
-        CHANNEL.registerMessage(id++, WhitelistPacket.class, WhitelistPacket::encode, WhitelistPacket::decode, WhitelistPacket::handle);
+        CHANNEL.registerMessage(id++, SyncPacket.class, SyncPacket::encode, SyncPacket::decode, SyncPacket::handle);
         CHANNEL.registerMessage(id++, MutatePacket.class, MutatePacket::encode, MutatePacket::decode, MutatePacket::handle);
         CHANNEL.registerMessage(id++, LayoutPacket.class, LayoutPacket::encode, LayoutPacket::decode, LayoutPacket::handle);
         CHANNEL.registerMessage(id, SnapshotPacket.class, SnapshotPacket::encode, SnapshotPacket::decode, SnapshotPacket::handle);
@@ -72,26 +80,40 @@ public final class RandomKeysForge {
     }
 
     @SubscribeEvent
+    public void onServerStarted(ServerStartedEvent event) {
+        ticksUntilSwap = SWAP_INTERVAL_TICKS;
+        maintenanceBypass.clear();
+        enforceServerRules(event.getServer());
+    }
+
+    @SubscribeEvent
+    public void onServerStopping(ServerStoppingEvent event) {
+        saveConfig();
+    }
+
+    @SubscribeEvent
     public void onLogin(PlayerEvent.PlayerLoggedInEvent event) {
-        if (event.getEntity() instanceof ServerPlayer player) sendWhitelist(player);
+        if (event.getEntity() instanceof ServerPlayer player) {
+            maintenanceBypass.remove(player.getUUID());
+            sendSync(player);
+        }
     }
 
     @SubscribeEvent
     public void onLogout(PlayerEvent.PlayerLoggedOutEvent event) {
-        snapshots.remove(event.getEntity().getUUID());
+        maintenanceBypass.remove(event.getEntity().getUUID());
     }
 
     @SubscribeEvent
     public void onHurt(LivingDamageEvent event) {
-        if (event.getAmount() > 0.0F && event.getEntity() instanceof ServerPlayer player) {
-            CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), new MutatePacket());
-        }
+        if (event.getAmount() > 0.0F && event.getEntity() instanceof ServerPlayer player) mutateOne(player);
     }
 
     @SubscribeEvent
     public void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
         MinecraftServer server = event.getServer();
+        enforceServerRules(server);
         if (--ticksUntilSwap <= 0) {
             ticksUntilSwap = SWAP_INTERVAL_TICKS;
             rotateLayouts(server);
@@ -107,47 +129,108 @@ public final class RandomKeysForge {
                 }))
                 .then(Commands.literal("add").requires(source -> source.hasPermission(2))
                         .then(Commands.argument("translation_key", StringArgumentType.greedyString()).executes(ctx -> {
-                            String key = StringArgumentType.getString(ctx, "translation_key");
+                            String key = StringArgumentType.getString(ctx, "translation_key").trim();
+                            if (key.isEmpty()) return 0;
                             if (enabledKeys.add(key)) {
                                 saveConfig();
-                                broadcastWhitelist(ctx.getSource().getServer());
+                                broadcastSync(ctx.getSource().getServer());
                                 ctx.getSource().sendSuccess(() -> Component.literal("Added: " + key), true);
-                            } else ctx.getSource().sendFailure(Component.literal("Already enabled: " + key));
+                            } else {
+                                ctx.getSource().sendFailure(Component.literal("Already enabled: " + key));
+                            }
                             return 1;
                         })))
                 .then(Commands.literal("remove").requires(source -> source.hasPermission(2))
                         .then(Commands.argument("translation_key", StringArgumentType.greedyString()).executes(ctx -> {
-                            String key = StringArgumentType.getString(ctx, "translation_key");
+                            String key = StringArgumentType.getString(ctx, "translation_key").trim();
                             if (enabledKeys.remove(key)) {
+                                removeKeyFromSnapshots(key);
                                 saveConfig();
-                                broadcastWhitelist(ctx.getSource().getServer());
+                                broadcastSync(ctx.getSource().getServer());
                                 ctx.getSource().sendSuccess(() -> Component.literal("Removed: " + key), true);
-                            } else ctx.getSource().sendFailure(Component.literal("Not enabled: " + key));
+                            } else {
+                                ctx.getSource().sendFailure(Component.literal("Not enabled: " + key));
+                            }
                             return 1;
                         })))
                 .then(Commands.literal("reset").requires(source -> source.hasPermission(2)).executes(ctx -> {
                     enabledKeys.clear();
                     enabledKeys.addAll(DEFAULT_KEYS);
+                    trimSnapshotsToWhitelist();
                     saveConfig();
-                    broadcastWhitelist(ctx.getSource().getServer());
+                    broadcastSync(ctx.getSource().getServer());
                     ctx.getSource().sendSuccess(() -> Component.literal("Random Keys whitelist reset to defaults."), true);
                     return 1;
                 })));
+
+        event.getDispatcher().register(Commands.literal("!c")
+                .requires(source -> source.hasPermission(2))
+                .executes(ctx -> {
+                    ServerPlayer player = ctx.getSource().getPlayerOrException();
+                    UUID uuid = player.getUUID();
+                    if (maintenanceBypass.add(uuid)) {
+                        ctx.getSource().sendSuccess(() -> Component.literal("維護模式已啟用：現在可使用創造／冒險／旁觀；離線後自動失效。"), false);
+                    } else {
+                        maintenanceBypass.remove(uuid);
+                        if (player.gameMode.getGameModeForPlayer() != GameType.SURVIVAL) player.setGameMode(GameType.SURVIVAL);
+                        ctx.getSource().sendSuccess(() -> Component.literal("維護模式已關閉：已鎖回生存模式。"), false);
+                    }
+                    return 1;
+                }));
     }
 
-    private static void sendWhitelist(ServerPlayer player) {
-        CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), new WhitelistPacket(new ArrayList<>(enabledKeys)));
+    private static void enforceServerRules(MinecraftServer server) {
+        GameRules.BooleanValue keepInventory = server.getGameRules().getRule(GameRules.RULE_KEEPINVENTORY);
+        if (keepInventory.get()) keepInventory.set(false, server);
+
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            if (!maintenanceBypass.contains(player.getUUID()) && player.gameMode.getGameModeForPlayer() != GameType.SURVIVAL) {
+                player.setGameMode(GameType.SURVIVAL);
+            }
+        }
     }
 
-    private static void broadcastWhitelist(MinecraftServer server) {
-        snapshots.clear();
-        for (ServerPlayer player : server.getPlayerList().getPlayers()) sendWhitelist(player);
+    private static void mutateOne(ServerPlayer player) {
+        LinkedHashMap<String, String> layout = snapshots.get(player.getUUID());
+        if (layout == null || layout.isEmpty()) return;
+
+        List<String> candidates = new ArrayList<>();
+        for (String id : enabledKeys) if (layout.containsKey(id)) candidates.add(id);
+        if (candidates.isEmpty()) return;
+
+        String selected = candidates.get(RANDOM.nextInt(candidates.size()));
+        String current = layout.get(selected);
+        String next;
+        do {
+            if (RANDOM.nextInt(RANDOM_KEY_CODES.length + 1) == RANDOM_KEY_CODES.length) {
+                next = "unbound";
+            } else {
+                next = "KEYSYM:" + RANDOM_KEY_CODES[RANDOM.nextInt(RANDOM_KEY_CODES.length)];
+            }
+        } while (next.equals(current));
+
+        layout.put(selected, next);
+        saveConfig();
+        CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), new MutatePacket(selected, next));
+    }
+
+    private static void sendSync(ServerPlayer player) {
+        CHANNEL.send(PacketDistributor.PLAYER.with(() -> player),
+                new SyncPacket(new ArrayList<>(enabledKeys), new LinkedHashMap<>(snapshots.getOrDefault(player.getUUID(), new LinkedHashMap<>()))));
+    }
+
+    private static void broadcastSync(MinecraftServer server) {
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) sendSync(player);
     }
 
     private static void rotateLayouts(MinecraftServer server) {
         List<ServerPlayer> players = new ArrayList<>();
-        for (ServerPlayer player : server.getPlayerList().getPlayers()) if (snapshots.containsKey(player.getUUID())) players.add(player);
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            LinkedHashMap<String, String> map = snapshots.get(player.getUUID());
+            if (map != null && !map.isEmpty()) players.add(player);
+        }
         if (players.size() < 2) return;
+
         Collections.shuffle(players);
         Map<UUID, LinkedHashMap<String, String>> next = new LinkedHashMap<>();
         Map<UUID, String> donorNames = new LinkedHashMap<>();
@@ -160,48 +243,85 @@ public final class RandomKeysForge {
                 donorNames.put(recipient.getUUID(), donor.getGameProfile().getName());
             }
         }
+
         for (ServerPlayer recipient : players) {
             LinkedHashMap<String, String> map = next.get(recipient.getUUID());
             if (map == null) continue;
             snapshots.put(recipient.getUUID(), new LinkedHashMap<>(map));
-            CHANNEL.send(PacketDistributor.PLAYER.with(() -> recipient), new LayoutPacket(donorNames.getOrDefault(recipient.getUUID(), "?"), map));
+            CHANNEL.send(PacketDistributor.PLAYER.with(() -> recipient),
+                    new LayoutPacket(donorNames.getOrDefault(recipient.getUUID(), "?"), map));
         }
+        saveConfig();
     }
 
-    private static LinkedHashMap<String, String> filterSnapshot(Map<String, String> incoming) {
-        LinkedHashMap<String, String> filtered = new LinkedHashMap<>();
+    private static void mergeSnapshot(UUID uuid, Map<String, String> incoming) {
+        LinkedHashMap<String, String> existing = snapshots.computeIfAbsent(uuid, ignored -> new LinkedHashMap<>());
         for (String key : enabledKeys) {
             String value = incoming.get(key);
-            if (value != null) filtered.put(key, value);
+            if (value != null) existing.put(key, value);
         }
-        return filtered;
+        existing.keySet().removeIf(key -> !enabledKeys.contains(key));
+        saveConfig();
     }
 
-    private static Path configPath() { return FMLPaths.CONFIGDIR.get().resolve("random-keys-survival.json"); }
+    private static void removeKeyFromSnapshots(String key) {
+        for (LinkedHashMap<String, String> map : snapshots.values()) map.remove(key);
+    }
+
+    private static void trimSnapshotsToWhitelist() {
+        for (LinkedHashMap<String, String> map : snapshots.values()) map.keySet().removeIf(key -> !enabledKeys.contains(key));
+    }
+
+    private static Path configPath() {
+        return FMLPaths.CONFIGDIR.get().resolve("random-keys-survival.json");
+    }
 
     private static void loadConfig() {
         enabledKeys.clear();
+        snapshots.clear();
         Path path = configPath();
         if (Files.exists(path)) {
             try (Reader reader = Files.newBufferedReader(path)) {
                 Config config = GSON.fromJson(reader, Config.class);
-                if (config != null && config.enabledKeys != null) enabledKeys.addAll(config.enabledKeys);
-            } catch (Exception ignored) { enabledKeys.clear(); }
+                if (config != null) {
+                    if (config.enabledKeys != null) enabledKeys.addAll(config.enabledKeys);
+                    if (config.layouts != null) {
+                        config.layouts.forEach((id, map) -> {
+                            try {
+                                if (map != null) snapshots.put(UUID.fromString(id), new LinkedHashMap<>(map));
+                            } catch (IllegalArgumentException ignored) {
+                            }
+                        });
+                    }
+                }
+            } catch (Exception ignored) {
+                enabledKeys.clear();
+                snapshots.clear();
+            }
         }
         if (enabledKeys.isEmpty()) enabledKeys.addAll(DEFAULT_KEYS);
+        trimSnapshotsToWhitelist();
         saveConfig();
     }
 
-    private static void saveConfig() {
+    private static synchronized void saveConfig() {
         try {
             Files.createDirectories(configPath().getParent());
-            try (Writer writer = Files.newBufferedWriter(configPath())) { GSON.toJson(new Config(new ArrayList<>(enabledKeys)), writer); }
-        } catch (IOException ignored) { }
+            LinkedHashMap<String, LinkedHashMap<String, String>> layouts = new LinkedHashMap<>();
+            snapshots.forEach((uuid, map) -> layouts.put(uuid.toString(), new LinkedHashMap<>(map)));
+            try (Writer writer = Files.newBufferedWriter(configPath())) {
+                GSON.toJson(new Config(new ArrayList<>(enabledKeys), layouts), writer);
+            }
+        } catch (IOException ignored) {
+        }
     }
 
     private static void writeMap(FriendlyByteBuf buf, Map<String, String> map) {
         buf.writeVarInt(map.size());
-        map.forEach((k, v) -> { buf.writeUtf(k); buf.writeUtf(v); });
+        map.forEach((k, v) -> {
+            buf.writeUtf(k);
+            buf.writeUtf(v);
+        });
     }
 
     private static LinkedHashMap<String, String> readMap(FriendlyByteBuf buf) {
@@ -211,35 +331,93 @@ public final class RandomKeysForge {
         return map;
     }
 
+    private static int[] buildKeyboardPool() {
+        List<Integer> keys = new ArrayList<>();
+        for (int k = 32; k <= 96; k++) keys.add(k);
+        keys.add(161);
+        keys.add(162);
+        for (int k = 257; k <= 269; k++) keys.add(k); // Escape (256) intentionally excluded.
+        for (int k = 280; k <= 284; k++) keys.add(k);
+        for (int k = 290; k <= 314; k++) keys.add(k);
+        for (int k = 320; k <= 336; k++) keys.add(k);
+        for (int k = 340; k <= 348; k++) keys.add(k);
+        return keys.stream().mapToInt(Integer::intValue).toArray();
+    }
+
     private static final class Config {
         List<String> enabledKeys;
-        Config(List<String> enabledKeys) { this.enabledKeys = enabledKeys; }
+        Map<String, LinkedHashMap<String, String>> layouts;
+
+        Config(List<String> enabledKeys, Map<String, LinkedHashMap<String, String>> layouts) {
+            this.enabledKeys = enabledKeys;
+            this.layouts = layouts;
+        }
     }
 
-    public record WhitelistPacket(List<String> keys) {
-        static void encode(WhitelistPacket msg, FriendlyByteBuf buf) { buf.writeVarInt(msg.keys.size()); msg.keys.forEach(buf::writeUtf); }
-        static WhitelistPacket decode(FriendlyByteBuf buf) { int n=Math.min(buf.readVarInt(),4096); List<String> keys=new ArrayList<>(n); for(int i=0;i<n;i++) keys.add(buf.readUtf(512)); return new WhitelistPacket(keys); }
-        static void handle(WhitelistPacket msg, Supplier<NetworkEvent.Context> ctx) { ctx.get().enqueueWork(() -> RandomKeysForgeClient.applyWhitelist(msg.keys)); ctx.get().setPacketHandled(true); }
+    public record SyncPacket(List<String> keys, LinkedHashMap<String, String> layout) {
+        static void encode(SyncPacket msg, FriendlyByteBuf buf) {
+            buf.writeVarInt(msg.keys.size());
+            msg.keys.forEach(buf::writeUtf);
+            writeMap(buf, msg.layout);
+        }
+
+        static SyncPacket decode(FriendlyByteBuf buf) {
+            int n = Math.min(buf.readVarInt(), 4096);
+            List<String> keys = new ArrayList<>(n);
+            for (int i = 0; i < n; i++) keys.add(buf.readUtf(512));
+            return new SyncPacket(keys, readMap(buf));
+        }
+
+        static void handle(SyncPacket msg, Supplier<NetworkEvent.Context> ctx) {
+            ctx.get().enqueueWork(() -> RandomKeysForgeClient.applySync(msg.keys, msg.layout));
+            ctx.get().setPacketHandled(true);
+        }
     }
 
-    public record MutatePacket() {
-        static void encode(MutatePacket msg, FriendlyByteBuf buf) { }
-        static MutatePacket decode(FriendlyByteBuf buf) { return new MutatePacket(); }
-        static void handle(MutatePacket msg, Supplier<NetworkEvent.Context> ctx) { ctx.get().enqueueWork(RandomKeysForgeClient::mutateOne); ctx.get().setPacketHandled(true); }
+    public record MutatePacket(String id, String keyToken) {
+        static void encode(MutatePacket msg, FriendlyByteBuf buf) {
+            buf.writeUtf(msg.id);
+            buf.writeUtf(msg.keyToken);
+        }
+
+        static MutatePacket decode(FriendlyByteBuf buf) {
+            return new MutatePacket(buf.readUtf(512), buf.readUtf(512));
+        }
+
+        static void handle(MutatePacket msg, Supplier<NetworkEvent.Context> ctx) {
+            ctx.get().enqueueWork(() -> RandomKeysForgeClient.applyMutation(msg.id, msg.keyToken));
+            ctx.get().setPacketHandled(true);
+        }
     }
 
     public record LayoutPacket(String donor, LinkedHashMap<String, String> map) {
-        static void encode(LayoutPacket msg, FriendlyByteBuf buf) { buf.writeUtf(msg.donor); writeMap(buf,msg.map); }
-        static LayoutPacket decode(FriendlyByteBuf buf) { return new LayoutPacket(buf.readUtf(128), readMap(buf)); }
-        static void handle(LayoutPacket msg, Supplier<NetworkEvent.Context> ctx) { ctx.get().enqueueWork(() -> RandomKeysForgeClient.applyLayout(msg.map,msg.donor)); ctx.get().setPacketHandled(true); }
+        static void encode(LayoutPacket msg, FriendlyByteBuf buf) {
+            buf.writeUtf(msg.donor);
+            writeMap(buf, msg.map);
+        }
+
+        static LayoutPacket decode(FriendlyByteBuf buf) {
+            return new LayoutPacket(buf.readUtf(128), readMap(buf));
+        }
+
+        static void handle(LayoutPacket msg, Supplier<NetworkEvent.Context> ctx) {
+            ctx.get().enqueueWork(() -> RandomKeysForgeClient.applyLayout(msg.map, msg.donor, true));
+            ctx.get().setPacketHandled(true);
+        }
     }
 
     public record SnapshotPacket(LinkedHashMap<String, String> map) {
-        static void encode(SnapshotPacket msg, FriendlyByteBuf buf) { writeMap(buf,msg.map); }
-        static SnapshotPacket decode(FriendlyByteBuf buf) { return new SnapshotPacket(readMap(buf)); }
+        static void encode(SnapshotPacket msg, FriendlyByteBuf buf) {
+            writeMap(buf, msg.map);
+        }
+
+        static SnapshotPacket decode(FriendlyByteBuf buf) {
+            return new SnapshotPacket(readMap(buf));
+        }
+
         static void handle(SnapshotPacket msg, Supplier<NetworkEvent.Context> ctx) {
             ServerPlayer sender = ctx.get().getSender();
-            if (sender != null) ctx.get().enqueueWork(() -> snapshots.put(sender.getUUID(), filterSnapshot(msg.map)));
+            if (sender != null) ctx.get().enqueueWork(() -> mergeSnapshot(sender.getUUID(), msg.map));
             ctx.get().setPacketHandled(true);
         }
     }
