@@ -1,0 +1,96 @@
+name: Video / Stream Notice | 影片／直播通知 | 视频／直播通知
+description: Notify Ray20123315 before publicly recording, streaming, or publishing content that uses this Mod.
+title: "[Video Notice] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 繁體中文
+        若你準備公開發布影片、直播或其他影音內容，且內容中有安裝、展示或實際使用 Random Keys Survival，請在錄製／直播／公開前提交此通知。
+
+        ## 简体中文
+        如果你准备公开发布视频、直播或其他影音内容，并且内容中安装、展示或实际使用 Random Keys Survival，请在录制／直播／公开前提交此通知。
+
+        ## English
+        If you plan to publicly release a video, livestream, or other audiovisual content in which Random Keys Survival is installed, shown, demonstrated, or materially used, submit this notice before recording, streaming, or publication.
+
+        This is a notice requirement only. Filing this issue does not imply sponsorship, endorsement, partnership, or approval by Ray20123315.
+
+  - type: dropdown
+    id: language
+    attributes:
+      label: Language / 語言 / 语言
+      options:
+        - 繁體中文
+        - 简体中文
+        - English
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: content_type
+    attributes:
+      label: Content type / 內容類型 / 内容类型
+      options:
+        - Recorded video / 錄製影片 / 录制视频
+        - Livestream / 直播
+        - Short / Clip / 短影音 / 短视频
+        - Other / 其他
+    validations:
+      required: true
+
+  - type: input
+    id: platform
+    attributes:
+      label: Platform / 平台
+      description: YouTube, Bilibili, Twitch, TikTok, etc.
+      placeholder: YouTube
+    validations:
+      required: true
+
+  - type: input
+    id: channel
+    attributes:
+      label: Channel or creator name / 頻道或創作者名稱 / 频道或创作者名称
+      placeholder: Channel name
+    validations:
+      required: true
+
+  - type: input
+    id: channel_url
+    attributes:
+      label: Channel or project URL / 頻道或企劃連結 / 频道或项目链接
+      description: Provide a public link when one is already available.
+      placeholder: https://...
+    validations:
+      required: false
+
+  - type: input
+    id: planned_date
+    attributes:
+      label: Planned recording, stream, or publication date / 預計日期 / 预计日期
+      placeholder: YYYY-MM-DD
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Content description / 內容說明 / 内容说明
+      description: Briefly describe how the Mod will appear or be used.
+      placeholder: Brief description
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: acknowledgements
+    attributes:
+      label: Acknowledgements / 確認事項 / 确认事项
+      options:
+        - label: I am submitting this notice before the public recording/stream/publication begins. / 我是在公開錄製、直播或發布前提交通知。 / 我是在公开录制、直播或发布前提交通知。
+          required: true
+        - label: I understand that this notice does not imply sponsorship, endorsement, partnership, or approval by Ray20123315. / 我了解此通知不代表 Ray20123315 的贊助、背書、合作或核准。 / 我了解此通知不代表 Ray20123315 的赞助、背书、合作或批准。
+          required: true
+        - label: I have read the repository LICENSE. / 我已閱讀此儲存庫的 LICENSE。 / 我已阅读此仓库的 LICENSE。
+          required: true
