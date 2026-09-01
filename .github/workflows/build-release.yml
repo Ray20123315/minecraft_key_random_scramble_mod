@@ -9,7 +9,34 @@ permissions:
   contents: write
 
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: check
+        name: Check whether VERSION changed
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          elif [ -z "$BEFORE_SHA" ] || [[ "$BEFORE_SHA" =~ ^0+$ ]]; then
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          elif git diff --quiet "$BEFORE_SHA" "$GITHUB_SHA" -- VERSION; then
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
+    needs: prepare
+    if: needs.prepare.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -31,9 +58,9 @@ jobs:
         run: |
           mkdir -p dist
           if [ "${{ matrix.loader }}" = "fabric" ]; then
-            cp fabric/build/libs/random-keys-survival-fabric-0.3.2.jar dist/
+            cp fabric/build/libs/random-keys-survival-fabric-0.3.3.jar dist/
           else
-            cp forge/build/libs/random-keys-survival-forge-0.3.2.jar dist/
+            cp forge/build/libs/random-keys-survival-forge-0.3.3.jar dist/
           fi
       - uses: actions/upload-artifact@v4
         with:
@@ -42,8 +69,9 @@ jobs:
           if-no-files-found: error
 
   release:
+    needs: [prepare, build]
+    if: needs.prepare.outputs.should_release == 'true'
     runs-on: ubuntu-latest
-    needs: build
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -69,7 +97,7 @@ jobs:
           - 每 3 分鐘交換玩家整套亂鍵配置：1 人不換、2 人互換、3 人以上形成隨機循環。
           - 交換／改鍵前會清除按住狀態，避免卡住持續移動；快捷欄受控時禁止滑鼠滾輪切換。
           - 創造／冒險／旁觀模式預設禁止，OP 可用 `/!c` 暫時開啟個人維護模式；keepInventory 持續強制為 false。
-          - 支援繁體中文、簡體中文與英文。
+          - 若要公開錄製、直播或發布有使用本 Mod 的影音內容，必須在開始前先使用 GitHub 的 `Video / Stream Notice` Issue 表單通知 Ray20123315；私人且不公開的錄影不需要通知。
           - Copyright © 2026 Ray20123315. All Rights Reserved. 完整條款見 LICENSE。
 
           ## 简体中文
@@ -83,7 +111,7 @@ jobs:
           - 每 3 分钟交换玩家整套乱键配置：1 人不换、2 人互换、3 人以上形成随机循环。
           - 交换／改键前会清除按住状态，避免卡住持续移动；快捷栏受控时禁止鼠标滚轮切换。
           - 创造／冒险／旁观模式默认禁止，OP 可用 `/!c` 暂时开启个人维护模式；keepInventory 持续强制为 false。
-          - 支持繁体中文、简体中文和英文。
+          - 如果要公开录制、直播或发布使用本 Mod 的影音内容，必须在开始前先使用 GitHub 的 `Video / Stream Notice` Issue 表单通知 Ray20123315；私人且不公开的录制不需要通知。
           - Copyright © 2026 Ray20123315. All Rights Reserved. 完整条款见 LICENSE。
 
           ## English
@@ -97,7 +125,7 @@ jobs:
           - Every 3 minutes: 1 player = no-op, 2 players = mutual swap, 3+ players = one randomized cycle.
           - Held-key state is cleared before mutations/exchanges to prevent stuck movement; mouse-wheel hotbar switching is blocked while hotbar mappings are managed.
           - Creative/Adventure/Spectator are blocked by default; OPs can use `/!c` for a temporary personal maintenance bypass; keepInventory is continuously forced to false.
-          - Traditional Chinese, Simplified Chinese and English are included.
+          - Public video/stream recording or publication using this Mod requires prior notice to Ray20123315 through the GitHub `Video / Stream Notice` issue form; private unpublished recordings do not require notice.
           - Copyright © 2026 Ray20123315. All Rights Reserved. See LICENSE for the complete terms.
           EOF
           gh release create "$TAG" dist/*.jar \
