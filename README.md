@@ -43,10 +43,19 @@ Minecraft Java **1.20.1** mod for **Fabric + Forge**.
 - Java 版本：17。
 - GitHub Actions 會同時建置 Fabric 與 Forge；`main` 建置成功後會把兩個 runtime JAR 發佈到 GitHub Releases。
 
+### 影片／直播通知
+
+- 若準備公開發布影片、實況直播、Shorts／剪輯或其他影音內容，且內容中有安裝、展示或實際使用本 Mod，必須在**錄製、直播或公開發布開始前**先透過本儲存庫的 GitHub Issue 通知 **Ray20123315**。
+- 請使用 [`Video / Stream Notice`](https://github.com/Ray20123315/minecraft_key_random_scramble_mod/issues/new?template=video-stream-notice.yml) 表單，至少提供平台、頻道／創作者名稱與預計日期；若已有公開頻道或企劃連結也請附上。
+- 這是**通知制**，提交 Issue 不代表 Ray20123315 的贊助、背書、合作或核准。
+- 純私人且不提供第三方觀看、不公開發布的錄影不需要提交通知。
+- 完整法律條款仍以根目錄 [`LICENSE`](LICENSE) 為準。
+
 ### 許可證
 
 - Copyright © 2026 **Ray20123315**。
 - **All Rights Reserved**。
+- 未經明確書面許可，不授予重新散布、修改後發布、商業使用等權利。
 - 完整條款請見根目錄 [`LICENSE`](LICENSE)。
 
 ---
@@ -88,10 +97,19 @@ Minecraft Java **1.20.1** mod for **Fabric + Forge**.
 - Java 版本：17。
 - GitHub Actions 会同时构建 Fabric 与 Forge；`main` 构建成功后会把两个 runtime JAR 发布到 GitHub Releases。
 
+### 视频／直播通知
+
+- 如果准备公开发布视频、直播、Shorts／剪辑或其他影音内容，并且内容中安装、展示或实际使用本 Mod，必须在**录制、直播或公开发布开始前**先通过本仓库的 GitHub Issue 通知 **Ray20123315**。
+- 请使用 [`Video / Stream Notice`](https://github.com/Ray20123315/minecraft_key_random_scramble_mod/issues/new?template=video-stream-notice.yml) 表单，至少提供平台、频道／创作者名称和预计日期；如果已有公开频道或项目链接也请附上。
+- 这是**通知制**，提交 Issue 不代表 Ray20123315 的赞助、背书、合作或批准。
+- 纯私人、不会提供第三方观看且不会公开发布的录制不需要提交通知。
+- 完整法律条款仍以根目录 [`LICENSE`](LICENSE) 为准。
+
 ### 许可证
 
 - Copyright © 2026 **Ray20123315**。
 - **All Rights Reserved**。
+- 未经明确书面许可，不授予重新分发、修改后发布、商业使用等权利。
 - 完整条款请见根目录 [`LICENSE`](LICENSE)。
 
 ---
@@ -133,8 +151,17 @@ Minecraft Java **1.20.1** mod for **Fabric + Forge**.
 - Java: 17.
 - GitHub Actions builds both loaders; successful `main` builds publish both runtime JARs to GitHub Releases.
 
+### Video / stream notice
+
+- If you plan to publicly release a video, livestream, Short/clip, or other audiovisual content in which this Mod is installed, shown, demonstrated, or materially used, you must notify **Ray20123315** through this repository's GitHub Issues **before recording, streaming, or public publication begins**.
+- Use the [`Video / Stream Notice`](https://github.com/Ray20123315/minecraft_key_random_scramble_mod/issues/new?template=video-stream-notice.yml) form and provide at least the platform, channel/creator name, and planned date; include a public channel/project URL when available.
+- This is a **notice requirement**, not an endorsement or approval process. Filing an issue does not imply sponsorship, endorsement, partnership, or approval by Ray20123315.
+- Private recordings that are not shared with third parties or publicly published do not require notice.
+- The root [`LICENSE`](LICENSE) remains the controlling legal text.
+
 ### License
 
 - Copyright © 2026 **Ray20123315**.
 - **All Rights Reserved**.
+- No redistribution, modified publication, commercial use, or other additional rights are granted without explicit written permission.
 - See the root [`LICENSE`](LICENSE) file for the complete terms.
