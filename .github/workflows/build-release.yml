@@ -31,9 +31,9 @@ jobs:
         run: |
           mkdir -p dist
           if [ "${{ matrix.loader }}" = "fabric" ]; then
-            cp fabric/build/libs/random-keys-survival-fabric-0.3.0.jar dist/
+            cp fabric/build/libs/random-keys-survival-fabric-0.3.1.jar dist/
           else
-            cp forge/build/libs/random-keys-survival-forge-0.3.0.jar dist/
+            cp forge/build/libs/random-keys-survival-forge-0.3.1.jar dist/
           fi
       - uses: actions/upload-artifact@v4
         with:
@@ -61,4 +61,4 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "Random Keys Survival $(cat VERSION) (build ${GITHUB_RUN_NUMBER})" \
-            --notes "Minecraft 1.20.1 Fabric + Forge. One enabled mapping changes per damage; keypad keys and Unbound are valid results; layouts persist across reconnects and rotate every 3 minutes; mouse-wheel hotbar switching is blocked; non-survival modes require /!c maintenance bypass; keepInventory is forced off; zh_tw/zh_cn/en_us localization included."
+            --notes "Minecraft 1.20.1 Fabric + Forge. One enabled mapping changes per damage; keypad keys and Unbound are valid results; layouts persist across reconnects and rotate every 3 minutes; mouse-wheel hotbar switching is blocked; non-survival modes require /!c maintenance bypass; keepInventory is forced off; zh_tw/zh_cn/en_us localization included. HUD uses two top-right columns with green=original and red=changed bindings."
