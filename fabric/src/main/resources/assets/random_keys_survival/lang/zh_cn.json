@@ -1,0 +1,15 @@
+{
+  "random_keys_survival.key.numpad": "小键盘%s",
+  "random_keys_survival.message.key_changed": "按键改变：%s → %s",
+  "random_keys_survival.message.layout_received": "已取得 %s 的乱键配置",
+  "random_keys_survival.message.controls_locked": "乱键中的按键已锁定，不能在设置中手动更改",
+  "random_keys_survival.message.available_header": "已注册的 KeyMapping（%s）：",
+  "random_keys_survival.command.list": "乱键列表：%s",
+  "random_keys_survival.command.added": "已加入：%s",
+  "random_keys_survival.command.already_enabled": "已经启用：%s",
+  "random_keys_survival.command.removed": "已移除：%s",
+  "random_keys_survival.command.not_enabled": "尚未启用：%s",
+  "random_keys_survival.command.reset": "乱键白名单已重置为默认值。",
+  "random_keys_survival.maintenance.enabled": "维护模式已启用：暂时允许创造、冒险与旁观模式；离线后自动失效。",
+  "random_keys_survival.maintenance.disabled": "维护模式已关闭：已锁回生存模式。"
+}
