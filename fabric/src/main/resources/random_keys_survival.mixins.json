@@ -1,0 +1,11 @@
+{
+  "required": true,
+  "package": "com.ray.randomkeys.fabric.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "client": [
+    "PlayerInventoryMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
