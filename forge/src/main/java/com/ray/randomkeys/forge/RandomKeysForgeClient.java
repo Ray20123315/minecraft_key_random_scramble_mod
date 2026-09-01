@@ -8,6 +8,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
 import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.client.event.InputEvent;
 import net.minecraftforge.client.event.RegisterClientCommandsEvent;
 import net.minecraftforge.client.event.RegisterGuiOverlaysEvent;
 import net.minecraftforge.common.MinecraftForge;
@@ -22,7 +23,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Random;
 import java.util.Set;
 
 @Mod.EventBusSubscriber(modid = RandomKeysForge.MOD_ID, value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.MOD)
@@ -30,8 +30,6 @@ public final class RandomKeysForgeClient {
     private static final Set<String> enabledKeys = new LinkedHashSet<>();
     private static final Map<String, InputConstants.Key> originalKeys = new HashMap<>();
     private static final Map<String, InputConstants.Key> lockedLayout = new LinkedHashMap<>();
-    private static final Random RANDOM = new Random();
-    private static final int[] RANDOM_KEY_CODES = buildKeyboardPool();
     private static long lastLockWarningMs;
     private static boolean wasInWorld;
 
@@ -44,7 +42,7 @@ public final class RandomKeysForgeClient {
         event.registerAboveAll("key_hud", (gui, graphics, partialTick, screenWidth, screenHeight) -> renderHud(graphics, screenWidth));
     }
 
-    public static void applyWhitelist(List<String> newKeys) {
+    public static void applySync(List<String> newKeys, Map<String, String> serverLayout) {
         Minecraft client = Minecraft.getInstance();
         if (client.options == null) return;
         releaseAllKeys();
@@ -58,63 +56,53 @@ public final class RandomKeysForgeClient {
             originalKeys.putIfAbsent(id, binding.getKey());
             lockedLayout.putIfAbsent(id, binding.getKey());
         }
+
+        // Apply persisted server state before any client snapshot is uploaded.
+        applyLayout(serverLayout, null, false);
         enforceLockedBindings(false);
         sendSnapshot();
     }
 
-    public static void mutateOne() {
-        List<KeyMapping> candidates = new ArrayList<>();
-        for (String id : enabledKeys) {
-            KeyMapping binding = findBinding(id);
-            if (binding != null) candidates.add(binding);
-        }
-        if (candidates.isEmpty()) return;
-
-        KeyMapping selected = candidates.get(RANDOM.nextInt(candidates.size()));
-        InputConstants.Key current = selected.getKey();
-        InputConstants.Key next;
-        do {
-            if (RANDOM.nextInt(RANDOM_KEY_CODES.length + 1) == RANDOM_KEY_CODES.length) {
-                next = InputConstants.UNKNOWN;
-            } else {
-                int code = RANDOM_KEY_CODES[RANDOM.nextInt(RANDOM_KEY_CODES.length)];
-                next = InputConstants.Type.KEYSYM.getOrCreate(code);
-            }
-        } while (next.equals(current));
+    public static void applyMutation(String id, String keyToken) {
+        if (!enabledKeys.contains(id)) return;
+        KeyMapping binding = findBinding(id);
+        if (binding == null) return;
+        InputConstants.Key next = decodeKey(keyToken);
+        if (next == null) return;
 
         releaseAllKeys();
-        selected.setKey(next);
-        lockedLayout.put(selected.getName(), next);
+        binding.setKey(next);
+        lockedLayout.put(id, next);
         KeyMapping.resetMapping();
         releaseAllKeys();
 
         Minecraft client = Minecraft.getInstance();
-        if (client.player != null) client.player.displayClientMessage(Component.literal("按鍵改變：")
-                .append(Component.translatable(selected.getName()))
-                .append(Component.literal(" → "))
-                .append(selected.getTranslatedKeyMessage()), true);
+        if (client.player != null) {
+            client.player.displayClientMessage(Component.translatable("random_keys_survival.message.key_changed",
+                    Component.translatable(binding.getName()), displayKey(binding)), true);
+        }
         sendSnapshot();
     }
 
-    public static void applyLayout(Map<String, String> map, String donor) {
+    public static void applyLayout(Map<String, String> map, String donor, boolean announce) {
         releaseAllKeys();
         for (String id : enabledKeys) {
-            String keyName = map.get(id);
-            if (keyName == null) continue;
+            String token = map.get(id);
+            if (token == null) continue;
             KeyMapping binding = findBinding(id);
             if (binding == null) continue;
-            try {
-                InputConstants.Key key = InputConstants.getKey(keyName);
-                binding.setKey(key);
-                lockedLayout.put(id, key);
-            } catch (IllegalArgumentException ignored) {
-            }
+            InputConstants.Key key = decodeKey(token);
+            if (key == null) continue;
+            binding.setKey(key);
+            lockedLayout.put(id, key);
         }
         KeyMapping.resetMapping();
         releaseAllKeys();
         Minecraft client = Minecraft.getInstance();
-        if (client.player != null) client.player.displayClientMessage(Component.literal("已取得 " + donor + " 的亂鍵配置"), true);
-        sendSnapshot();
+        if (announce && donor != null && client.player != null) {
+            client.player.displayClientMessage(Component.translatable("random_keys_survival.message.layout_received", donor), true);
+        }
+        if (announce) sendSnapshot();
     }
 
     private static void enforceLockedBindings(boolean warn) {
@@ -142,7 +130,7 @@ public final class RandomKeysForgeClient {
             if (warn && client.player != null) {
                 long now = System.currentTimeMillis();
                 if (now - lastLockWarningMs >= 1500L) {
-                    client.player.displayClientMessage(Component.literal("亂鍵中的按鍵已鎖定，不能在設定中手動變更"), true);
+                    client.player.displayClientMessage(Component.translatable("random_keys_survival.message.controls_locked"), true);
                     lastLockWarningMs = now;
                 }
             }
@@ -155,9 +143,33 @@ public final class RandomKeysForgeClient {
         LinkedHashMap<String, String> map = new LinkedHashMap<>();
         for (String id : enabledKeys) {
             KeyMapping binding = findBinding(id);
-            if (binding != null) map.put(id, binding.getKey().getName());
+            if (binding != null) map.put(id, encodeKey(binding.getKey()));
         }
         RandomKeysForge.CHANNEL.sendToServer(new RandomKeysForge.SnapshotPacket(map));
+    }
+
+    private static String encodeKey(InputConstants.Key key) {
+        if (key.equals(InputConstants.UNKNOWN)) return "unbound";
+        return key.getType().name() + ":" + key.getValue();
+    }
+
+    private static InputConstants.Key decodeKey(String token) {
+        if (token == null) return null;
+        if (token.equals("unbound")) return InputConstants.UNKNOWN;
+        int colon = token.indexOf(':');
+        if (colon > 0 && colon < token.length() - 1) {
+            try {
+                InputConstants.Type type = InputConstants.Type.valueOf(token.substring(0, colon));
+                int code = Integer.parseInt(token.substring(colon + 1));
+                return type.getOrCreate(code);
+            } catch (IllegalArgumentException ignored) {
+            }
+        }
+        try {
+            return InputConstants.getKey(token);
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
     }
 
     private static void renderHud(GuiGraphics graphics, int screenWidth) {
@@ -170,7 +182,7 @@ public final class RandomKeysForgeClient {
             if (binding == null) continue;
             Component line = Component.translatable(binding.getName()).copy()
                     .append(Component.literal(": "))
-                    .append(binding.getTranslatedKeyMessage());
+                    .append(displayKey(binding));
             lines.add(line);
             width = Math.max(width, client.font.width(line));
         }
@@ -185,6 +197,19 @@ public final class RandomKeysForgeClient {
             graphics.drawString(client.font, line, x + padding, ty, 0xFFFFFF, true);
             ty += lineHeight;
         }
+    }
+
+    private static Component displayKey(KeyMapping binding) {
+        InputConstants.Key key = binding.getKey();
+        if (key.getType() == InputConstants.Type.KEYSYM && key.getValue() >= 320 && key.getValue() <= 329) {
+            return Component.translatable("random_keys_survival.key.numpad", key.getValue() - 320);
+        }
+        return binding.getTranslatedKeyMessage();
+    }
+
+    private static boolean shouldBlockHotbarScroll() {
+        Minecraft client = Minecraft.getInstance();
+        return enabledKeys.stream().anyMatch(id -> id.startsWith("key.hotbar.")) && client.player != null && client.screen == null;
     }
 
     private static KeyMapping findBinding(String translationKey) {
@@ -220,25 +245,13 @@ public final class RandomKeysForgeClient {
             if (needle.isEmpty() || id.toLowerCase(Locale.ROOT).contains(needle)) ids.add(id);
         }
         ids.sort(String::compareTo);
-        client.player.sendSystemMessage(Component.literal("Registered KeyMappings (" + ids.size() + "):"));
+        client.player.sendSystemMessage(Component.translatable("random_keys_survival.message.available_header", ids.size()));
         for (String id : ids) client.player.sendSystemMessage(Component.literal(" - " + id));
         return ids.size();
     }
 
     private static void releaseAllKeys() {
         KeyMapping.releaseAll();
-    }
-
-    private static int[] buildKeyboardPool() {
-        List<Integer> keys = new ArrayList<>();
-        for (int k = 32; k <= 96; k++) keys.add(k);
-        keys.add(161); keys.add(162);
-        for (int k = 257; k <= 269; k++) keys.add(k); // Escape (256) intentionally excluded.
-        for (int k = 280; k <= 284; k++) keys.add(k);
-        for (int k = 290; k <= 314; k++) keys.add(k);
-        for (int k = 320; k <= 336; k++) keys.add(k);
-        for (int k = 340; k <= 348; k++) keys.add(k);
-        return keys.stream().mapToInt(Integer::intValue).toArray();
     }
 
     private static final class RuntimeEvents {
@@ -249,6 +262,11 @@ public final class RandomKeysForgeClient {
                             .executes(ctx -> showAvailable(""))
                             .then(Commands.argument("filter", StringArgumentType.greedyString())
                                     .executes(ctx -> showAvailable(StringArgumentType.getString(ctx, "filter"))))));
+        }
+
+        @SubscribeEvent
+        public void onMouseScroll(InputEvent.MouseScrollingEvent event) {
+            if (shouldBlockHotbarScroll()) event.setCanceled(true);
         }
 
         @SubscribeEvent
