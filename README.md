@@ -24,7 +24,6 @@ Server commands:
 - `/randomkeys add <translation-key>` — OP level 2
 - `/randomkeys remove <translation-key>` — OP level 2
 - `/randomkeys reset` — OP level 2
-- `/!c` — OP level 2, toggles the temporary Creative/Adventure/Spectator maintenance bypass
 
 Client helper:
 
