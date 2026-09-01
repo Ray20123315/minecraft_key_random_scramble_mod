@@ -1,0 +1,15 @@
+{
+  "random_keys_survival.key.numpad": "Numpad %s",
+  "random_keys_survival.message.key_changed": "Key changed: %s → %s",
+  "random_keys_survival.message.layout_received": "Received %s's scrambled layout",
+  "random_keys_survival.message.controls_locked": "Scrambled controls are locked and cannot be changed in Controls",
+  "random_keys_survival.message.available_header": "Registered KeyMappings (%s):",
+  "random_keys_survival.command.list": "Random Keys: %s",
+  "random_keys_survival.command.added": "Added: %s",
+  "random_keys_survival.command.already_enabled": "Already enabled: %s",
+  "random_keys_survival.command.removed": "Removed: %s",
+  "random_keys_survival.command.not_enabled": "Not enabled: %s",
+  "random_keys_survival.command.reset": "Random Keys whitelist reset to defaults.",
+  "random_keys_survival.maintenance.enabled": "Maintenance mode enabled: Creative, Adventure, and Spectator are temporarily allowed. This resets on disconnect.",
+  "random_keys_survival.maintenance.disabled": "Maintenance mode disabled: game mode locked back to Survival."
+}
