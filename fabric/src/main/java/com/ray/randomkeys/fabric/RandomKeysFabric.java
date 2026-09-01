@@ -47,8 +47,10 @@ public final class RandomKeysFabric implements ModInitializer {
 
     public static final List<String> DEFAULT_KEYS = List.of(
             "key.forward", "key.left", "key.back", "key.right",
-            "key.jump", "key.sneak", "key.sprint", "key.inventory",
-            "key.swapOffhand", "key.drop", "key.playerlist", "key.pickItem"
+            "key.jump", "key.attack", "key.use", "key.sneak",
+            "key.inventory", "key.drop", "key.swapOffhand",
+            "key.hotbar.1", "key.hotbar.2", "key.hotbar.3", "key.hotbar.4", "key.hotbar.5",
+            "key.hotbar.6", "key.hotbar.7", "key.hotbar.8", "key.hotbar.9"
     );
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -97,7 +99,7 @@ public final class RandomKeysFabric implements ModInitializer {
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
             dispatcher.register(CommandManager.literal("randomkeys")
                     .then(CommandManager.literal("list").executes(ctx -> {
-                        ctx.getSource().sendFeedback(() -> Text.literal("Random Keys: " + String.join(", ", enabledKeys)), false);
+                        ctx.getSource().sendFeedback(() -> Text.translatable("random_keys_survival.command.list", String.join(", ", enabledKeys)), false);
                         return 1;
                     }))
                     .then(CommandManager.literal("add")
@@ -108,9 +110,9 @@ public final class RandomKeysFabric implements ModInitializer {
                                 if (enabledKeys.add(key)) {
                                     saveConfig();
                                     broadcastSync(ctx.getSource().getServer());
-                                    ctx.getSource().sendFeedback(() -> Text.literal("Added: " + key), true);
+                                    ctx.getSource().sendFeedback(() -> Text.translatable("random_keys_survival.command.added", key), true);
                                 } else {
-                                    ctx.getSource().sendError(Text.literal("Already enabled: " + key));
+                                    ctx.getSource().sendError(Text.translatable("random_keys_survival.command.already_enabled", key));
                                 }
                                 return 1;
                             })))
@@ -122,9 +124,9 @@ public final class RandomKeysFabric implements ModInitializer {
                                     removeKeyFromSnapshots(key);
                                     saveConfig();
                                     broadcastSync(ctx.getSource().getServer());
-                                    ctx.getSource().sendFeedback(() -> Text.literal("Removed: " + key), true);
+                                    ctx.getSource().sendFeedback(() -> Text.translatable("random_keys_survival.command.removed", key), true);
                                 } else {
-                                    ctx.getSource().sendError(Text.literal("Not enabled: " + key));
+                                    ctx.getSource().sendError(Text.translatable("random_keys_survival.command.not_enabled", key));
                                 }
                                 return 1;
                             })))
@@ -136,7 +138,7 @@ public final class RandomKeysFabric implements ModInitializer {
                                 trimSnapshotsToWhitelist();
                                 saveConfig();
                                 broadcastSync(ctx.getSource().getServer());
-                                ctx.getSource().sendFeedback(() -> Text.literal("Random Keys whitelist reset to defaults."), true);
+                                ctx.getSource().sendFeedback(() -> Text.translatable("random_keys_survival.command.reset"), true);
                                 return 1;
                             })));
 
@@ -146,11 +148,11 @@ public final class RandomKeysFabric implements ModInitializer {
                         ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
                         UUID uuid = player.getUuid();
                         if (maintenanceBypass.add(uuid)) {
-                            ctx.getSource().sendFeedback(() -> Text.literal("維護模式已啟用：現在可使用創造／冒險／旁觀；離線後自動失效。"), false);
+                            ctx.getSource().sendFeedback(() -> Text.translatable("random_keys_survival.maintenance.enabled"), false);
                         } else {
                             maintenanceBypass.remove(uuid);
                             if (player.interactionManager.getGameMode() != GameMode.SURVIVAL) player.changeGameMode(GameMode.SURVIVAL);
-                            ctx.getSource().sendFeedback(() -> Text.literal("維護模式已關閉：已鎖回生存模式。"), false);
+                            ctx.getSource().sendFeedback(() -> Text.translatable("random_keys_survival.maintenance.disabled"), false);
                         }
                         return 1;
                     }));
@@ -327,7 +329,7 @@ public final class RandomKeysFabric implements ModInitializer {
         for (int k = 257; k <= 269; k++) keys.add(k); // Escape (256) intentionally excluded.
         for (int k = 280; k <= 284; k++) keys.add(k);
         for (int k = 290; k <= 314; k++) keys.add(k);
-        for (int k = 320; k <= 336; k++) keys.add(k);
+        for (int k = 320; k <= 336; k++) keys.add(k); // Keypad 0-9 and keypad operators; valid even if hardware lacks a numpad.
         for (int k = 340; k <= 348; k++) keys.add(k);
         return keys.stream().mapToInt(Integer::intValue).toArray();
     }
