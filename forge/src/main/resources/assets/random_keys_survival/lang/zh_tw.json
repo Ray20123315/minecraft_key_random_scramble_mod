@@ -1,0 +1,15 @@
+{
+  "random_keys_survival.key.numpad": "小鍵盤%s",
+  "random_keys_survival.message.key_changed": "按鍵改變：%s → %s",
+  "random_keys_survival.message.layout_received": "已取得 %s 的亂鍵配置",
+  "random_keys_survival.message.controls_locked": "亂鍵中的按鍵已鎖定，不能在設定中手動變更",
+  "random_keys_survival.message.available_header": "已註冊的 KeyMapping（%s）：",
+  "random_keys_survival.command.list": "亂鍵清單：%s",
+  "random_keys_survival.command.added": "已加入：%s",
+  "random_keys_survival.command.already_enabled": "已經啟用：%s",
+  "random_keys_survival.command.removed": "已移除：%s",
+  "random_keys_survival.command.not_enabled": "尚未啟用：%s",
+  "random_keys_survival.command.reset": "亂鍵白名單已重設為預設值。",
+  "random_keys_survival.maintenance.enabled": "維護模式已啟用：暫時允許創造、冒險與旁觀模式；離線後自動失效。",
+  "random_keys_survival.maintenance.disabled": "維護模式已關閉：已鎖回生存模式。"
+}
