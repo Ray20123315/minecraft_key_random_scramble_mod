@@ -10,7 +10,8 @@
   "environment": "*",
   "entrypoints": {
     "main": [
-      "com.ray.randomkeys.fabric.RandomKeysFabric"
+      "com.ray.randomkeys.fabric.RandomKeysFabric",
+      "com.ray.randomkeys.fabric.CommonKeyPoolPatch"
     ],
     "client": [
       "com.ray.randomkeys.fabric.RandomKeysFabricClient"
