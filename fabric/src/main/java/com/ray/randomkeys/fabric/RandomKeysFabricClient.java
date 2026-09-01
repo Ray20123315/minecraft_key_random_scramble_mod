@@ -88,6 +88,7 @@ public final class RandomKeysFabricClient implements ClientModInitializer {
             lockedLayout.putIfAbsent(id, current);
         }
 
+        // Server-saved state wins before the client is allowed to upload a snapshot.
         applyLayout(serverLayout, null, false);
         enforceLockedBindings(false);
         sendSnapshot();
@@ -108,15 +109,13 @@ public final class RandomKeysFabricClient implements ClientModInitializer {
 
         MinecraftClient client = MinecraftClient.getInstance();
         if (client.player != null) {
-            client.player.sendMessage(Text.literal("按鍵改變：")
-                    .append(Text.translatable(binding.getTranslationKey()))
-                    .append(Text.literal(" → "))
-                    .append(binding.getBoundKeyLocalizedText()), true);
+            client.player.sendMessage(Text.translatable("random_keys_survival.message.key_changed",
+                    Text.translatable(binding.getTranslationKey()), displayKey(binding)), true);
         }
         sendSnapshot();
     }
 
-    public static void applyLayout(Map<String, String> map, String donor, boolean announce) {
+    private static void applyLayout(Map<String, String> map, String donor, boolean announce) {
         releaseAllKeys();
         for (String id : enabledKeys) {
             String token = map.get(id);
@@ -132,7 +131,7 @@ public final class RandomKeysFabricClient implements ClientModInitializer {
         releaseAllKeys();
         MinecraftClient client = MinecraftClient.getInstance();
         if (announce && donor != null && client.player != null) {
-            client.player.sendMessage(Text.literal("已取得 " + donor + " 的亂鍵配置"), true);
+            client.player.sendMessage(Text.translatable("random_keys_survival.message.layout_received", donor), true);
         }
         if (announce) sendSnapshot();
     }
@@ -163,7 +162,7 @@ public final class RandomKeysFabricClient implements ClientModInitializer {
             if (warn && client.player != null) {
                 long now = System.currentTimeMillis();
                 if (now - lastLockWarningMs >= 1500L) {
-                    client.player.sendMessage(Text.literal("亂鍵中的按鍵已鎖定，不能在設定中手動變更"), true);
+                    client.player.sendMessage(Text.translatable("random_keys_survival.message.controls_locked"), true);
                     lastLockWarningMs = now;
                 }
             }
@@ -199,6 +198,7 @@ public final class RandomKeysFabricClient implements ClientModInitializer {
             } catch (IllegalArgumentException ignored) {
             }
         }
+        // Compatibility with early snapshots that used translation keys.
         try {
             return InputUtil.fromTranslationKey(token);
         } catch (IllegalArgumentException ignored) {
@@ -223,7 +223,7 @@ public final class RandomKeysFabricClient implements ClientModInitializer {
         for (KeyBinding binding : rows) {
             Text line = Text.translatable(binding.getTranslationKey()).copy()
                     .append(Text.literal(": "))
-                    .append(binding.getBoundKeyLocalizedText());
+                    .append(displayKey(binding));
             lines.add(line);
             width = Math.max(width, client.textRenderer.getWidth(line));
         }
@@ -236,6 +236,19 @@ public final class RandomKeysFabricClient implements ClientModInitializer {
             context.drawTextWithShadow(client.textRenderer, line, x + padding, ty, 0xFFFFFF);
             ty += lineHeight;
         }
+    }
+
+    private static Text displayKey(KeyBinding binding) {
+        InputUtil.Key key = boundKey(binding);
+        if (key.getCategory() == InputUtil.Type.KEYSYM && key.getCode() >= 320 && key.getCode() <= 329) {
+            return Text.translatable("random_keys_survival.key.numpad", key.getCode() - 320);
+        }
+        return binding.getBoundKeyLocalizedText();
+    }
+
+    public static boolean shouldBlockHotbarScroll() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        return enabledKeys.stream().anyMatch(id -> id.startsWith("key.hotbar.")) && client.player != null && client.currentScreen == null;
     }
 
     private static KeyBinding findBinding(String translationKey) {
@@ -277,7 +290,7 @@ public final class RandomKeysFabricClient implements ClientModInitializer {
             if (needle.isEmpty() || id.toLowerCase(Locale.ROOT).contains(needle)) ids.add(id);
         }
         ids.sort(String::compareTo);
-        client.player.sendMessage(Text.literal("Registered KeyMappings (" + ids.size() + "):"), false);
+        client.player.sendMessage(Text.translatable("random_keys_survival.message.available_header", ids.size()), false);
         for (String id : ids) client.player.sendMessage(Text.literal(" - " + id), false);
         return ids.size();
     }
