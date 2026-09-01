@@ -1,6 +1,7 @@
 package com.ray.randomkeys.fabric;
 
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -14,7 +15,7 @@ import java.util.concurrent.ThreadLocalRandom;
  *
  * <p>The original pool included unnamed numeric gaps and uncommon GLFW tokens such as
  * WORLD_1/WORLD_2, F13-F25 and Super/Windows. This initializer runs immediately after the
- * main server initializer, replaces every pool slot with a known common-PC key, sanitizes
+ * server initialization, replaces every pool slot with a known common-PC key, sanitizes
  * already-persisted bad KEYSYM snapshots, and writes the migrated server state back out.</p>
  */
 public final class CommonKeyPoolPatch implements ModInitializer {
@@ -43,6 +44,10 @@ public final class CommonKeyPoolPatch implements ModInitializer {
 
     @Override
     public void onInitialize() {
+        ServerLifecycleEvents.SERVER_STARTING.register(server -> enforceCommonPool());
+    }
+
+    private static void enforceCommonPool() {
         try {
             patchRandomPool();
             sanitizeSavedLayouts();
