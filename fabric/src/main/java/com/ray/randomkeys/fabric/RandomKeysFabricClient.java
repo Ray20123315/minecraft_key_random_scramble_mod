@@ -24,33 +24,34 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Random;
 import java.util.Set;
 
 public final class RandomKeysFabricClient implements ClientModInitializer {
     private static final Set<String> enabledKeys = new LinkedHashSet<>();
     private static final Map<String, InputUtil.Key> originalKeys = new HashMap<>();
     private static final Map<String, InputUtil.Key> lockedLayout = new LinkedHashMap<>();
-    private static final Random RANDOM = new Random();
-    private static final int[] RANDOM_KEY_CODES = buildKeyboardPool();
     private static long lastLockWarningMs;
 
     @Override
     public void onInitializeClient() {
-        ClientPlayNetworking.registerGlobalReceiver(RandomKeysFabric.WHITELIST_S2C, (client, handler, buf, responseSender) -> {
+        ClientPlayNetworking.registerGlobalReceiver(RandomKeysFabric.SYNC_S2C, (client, handler, buf, responseSender) -> {
             int count = Math.min(buf.readVarInt(), 4096);
             List<String> keys = new ArrayList<>(count);
             for (int i = 0; i < count; i++) keys.add(buf.readString(512));
-            client.execute(() -> applyWhitelist(keys));
+            LinkedHashMap<String, String> savedLayout = RandomKeysFabric.readMap(buf);
+            client.execute(() -> applySync(keys, savedLayout));
         });
 
-        ClientPlayNetworking.registerGlobalReceiver(RandomKeysFabric.MUTATE_S2C, (client, handler, buf, responseSender) ->
-                client.execute(RandomKeysFabricClient::mutateOne));
+        ClientPlayNetworking.registerGlobalReceiver(RandomKeysFabric.MUTATE_S2C, (client, handler, buf, responseSender) -> {
+            String id = buf.readString(512);
+            String keyToken = buf.readString(512);
+            client.execute(() -> applyMutation(id, keyToken));
+        });
 
         ClientPlayNetworking.registerGlobalReceiver(RandomKeysFabric.APPLY_LAYOUT_S2C, (client, handler, buf, responseSender) -> {
             String donor = buf.readString(128);
             LinkedHashMap<String, String> map = RandomKeysFabric.readMap(buf);
-            client.execute(() -> applyLayout(map, donor));
+            client.execute(() -> applyLayout(map, donor, true));
         });
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> restoreAll());
@@ -67,22 +68,7 @@ public final class RandomKeysFabricClient implements ClientModInitializer {
         ));
     }
 
-    private static int showAvailable(String filter) {
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client.player == null || client.options == null) return 0;
-        String needle = filter.toLowerCase(Locale.ROOT);
-        List<String> ids = new ArrayList<>();
-        for (KeyBinding binding : client.options.allKeys) {
-            String id = binding.getTranslationKey();
-            if (needle.isEmpty() || id.toLowerCase(Locale.ROOT).contains(needle)) ids.add(id);
-        }
-        ids.sort(String::compareTo);
-        client.player.sendMessage(Text.literal("Registered KeyMappings (" + ids.size() + "):"), false);
-        for (String id : ids) client.player.sendMessage(Text.literal(" - " + id), false);
-        return ids.size();
-    }
-
-    private static void applyWhitelist(List<String> newKeys) {
+    private static void applySync(List<String> newKeys, Map<String, String> serverLayout) {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client.options == null) return;
         releaseAllKeys();
@@ -101,65 +87,54 @@ public final class RandomKeysFabricClient implements ClientModInitializer {
             originalKeys.putIfAbsent(id, current);
             lockedLayout.putIfAbsent(id, current);
         }
+
+        applyLayout(serverLayout, null, false);
         enforceLockedBindings(false);
         sendSnapshot();
     }
 
-    public static void mutateOne() {
-        List<KeyBinding> candidates = new ArrayList<>();
-        for (String id : enabledKeys) {
-            KeyBinding binding = findBinding(id);
-            if (binding != null) candidates.add(binding);
-        }
-        if (candidates.isEmpty()) return;
-
-        KeyBinding selected = candidates.get(RANDOM.nextInt(candidates.size()));
-        InputUtil.Key current = boundKey(selected);
-        InputUtil.Key next;
-        do {
-            if (RANDOM.nextInt(RANDOM_KEY_CODES.length + 1) == RANDOM_KEY_CODES.length) {
-                next = InputUtil.UNKNOWN_KEY;
-            } else {
-                int code = RANDOM_KEY_CODES[RANDOM.nextInt(RANDOM_KEY_CODES.length)];
-                next = InputUtil.fromKeyCode(code, -1);
-            }
-        } while (next.equals(current));
+    private static void applyMutation(String id, String keyToken) {
+        if (!enabledKeys.contains(id)) return;
+        KeyBinding binding = findBinding(id);
+        if (binding == null) return;
+        InputUtil.Key next = decodeKey(keyToken);
+        if (next == null) return;
 
         releaseAllKeys();
-        selected.setBoundKey(next);
-        lockedLayout.put(selected.getTranslationKey(), next);
+        binding.setBoundKey(next);
+        lockedLayout.put(id, next);
         KeyBinding.updateKeysByCode();
         releaseAllKeys();
 
         MinecraftClient client = MinecraftClient.getInstance();
         if (client.player != null) {
             client.player.sendMessage(Text.literal("按鍵改變：")
-                    .append(Text.translatable(selected.getTranslationKey()))
+                    .append(Text.translatable(binding.getTranslationKey()))
                     .append(Text.literal(" → "))
-                    .append(selected.getBoundKeyLocalizedText()), true);
+                    .append(binding.getBoundKeyLocalizedText()), true);
         }
         sendSnapshot();
     }
 
-    public static void applyLayout(Map<String, String> map, String donor) {
+    public static void applyLayout(Map<String, String> map, String donor, boolean announce) {
         releaseAllKeys();
         for (String id : enabledKeys) {
-            String keyName = map.get(id);
-            if (keyName == null) continue;
+            String token = map.get(id);
+            if (token == null) continue;
             KeyBinding binding = findBinding(id);
             if (binding == null) continue;
-            try {
-                InputUtil.Key key = InputUtil.fromTranslationKey(keyName);
-                binding.setBoundKey(key);
-                lockedLayout.put(id, key);
-            } catch (IllegalArgumentException ignored) {
-            }
+            InputUtil.Key key = decodeKey(token);
+            if (key == null) continue;
+            binding.setBoundKey(key);
+            lockedLayout.put(id, key);
         }
         KeyBinding.updateKeysByCode();
         releaseAllKeys();
         MinecraftClient client = MinecraftClient.getInstance();
-        if (client.player != null) client.player.sendMessage(Text.literal("已取得 " + donor + " 的亂鍵配置"), true);
-        sendSnapshot();
+        if (announce && donor != null && client.player != null) {
+            client.player.sendMessage(Text.literal("已取得 " + donor + " 的亂鍵配置"), true);
+        }
+        if (announce) sendSnapshot();
     }
 
     private static void enforceLockedBindings(boolean warn) {
@@ -200,11 +175,35 @@ public final class RandomKeysFabricClient implements ClientModInitializer {
         LinkedHashMap<String, String> map = new LinkedHashMap<>();
         for (String id : enabledKeys) {
             KeyBinding binding = findBinding(id);
-            if (binding != null) map.put(id, boundKey(binding).getTranslationKey());
+            if (binding != null) map.put(id, encodeKey(boundKey(binding)));
         }
         PacketByteBuf buf = PacketByteBufs.create();
         RandomKeysFabric.writeMap(buf, map);
         ClientPlayNetworking.send(RandomKeysFabric.SNAPSHOT_C2S, buf);
+    }
+
+    private static String encodeKey(InputUtil.Key key) {
+        if (key.equals(InputUtil.UNKNOWN_KEY)) return "unbound";
+        return key.getCategory().name() + ":" + key.getCode();
+    }
+
+    private static InputUtil.Key decodeKey(String token) {
+        if (token == null) return null;
+        if (token.equals("unbound")) return InputUtil.UNKNOWN_KEY;
+        int colon = token.indexOf(':');
+        if (colon > 0 && colon < token.length() - 1) {
+            try {
+                InputUtil.Type type = InputUtil.Type.valueOf(token.substring(0, colon));
+                int code = Integer.parseInt(token.substring(colon + 1));
+                return type.createFromCode(code);
+            } catch (IllegalArgumentException ignored) {
+            }
+        }
+        try {
+            return InputUtil.fromTranslationKey(token);
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
     }
 
     private static void renderHud(DrawContext context, float tickDelta) {
@@ -268,19 +267,22 @@ public final class RandomKeysFabricClient implements ClientModInitializer {
         releaseAllKeys();
     }
 
-    private static void releaseAllKeys() {
-        KeyBinding.unpressAll();
+    private static int showAvailable(String filter) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.player == null || client.options == null) return 0;
+        String needle = filter.toLowerCase(Locale.ROOT);
+        List<String> ids = new ArrayList<>();
+        for (KeyBinding binding : client.options.allKeys) {
+            String id = binding.getTranslationKey();
+            if (needle.isEmpty() || id.toLowerCase(Locale.ROOT).contains(needle)) ids.add(id);
+        }
+        ids.sort(String::compareTo);
+        client.player.sendMessage(Text.literal("Registered KeyMappings (" + ids.size() + "):"), false);
+        for (String id : ids) client.player.sendMessage(Text.literal(" - " + id), false);
+        return ids.size();
     }
 
-    private static int[] buildKeyboardPool() {
-        List<Integer> keys = new ArrayList<>();
-        for (int k = 32; k <= 96; k++) keys.add(k);
-        keys.add(161); keys.add(162);
-        for (int k = 257; k <= 269; k++) keys.add(k); // Escape (256) intentionally excluded.
-        for (int k = 280; k <= 284; k++) keys.add(k);
-        for (int k = 290; k <= 314; k++) keys.add(k);
-        for (int k = 320; k <= 336; k++) keys.add(k);
-        for (int k = 340; k <= 348; k++) keys.add(k);
-        return keys.stream().mapToInt(Integer::intValue).toArray();
+    private static void releaseAllKeys() {
+        KeyBinding.unpressAll();
     }
 }
