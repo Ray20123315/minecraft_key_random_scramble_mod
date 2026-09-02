@@ -84,13 +84,9 @@ public final class RandomKeysFabricClient implements ClientModInitializer {
         if (client.options == null) return;
         releaseAllKeys();
         Set<String> incoming = new LinkedHashSet<>(newKeys);
-
-        for (String old : new ArrayList<>(enabledKeys)) {
-            if (!incoming.contains(old)) restoreOne(old);
-        }
+        for (String old : new ArrayList<>(enabledKeys)) if (!incoming.contains(old)) restoreOne(old);
         enabledKeys.clear();
         enabledKeys.addAll(incoming);
-
         for (String id : enabledKeys) {
             KeyBinding binding = findBinding(id);
             if (binding == null) continue;
@@ -98,8 +94,6 @@ public final class RandomKeysFabricClient implements ClientModInitializer {
             originalKeys.putIfAbsent(id, current);
             lockedLayout.putIfAbsent(id, current);
         }
-
-        // Server-saved state wins before the client is allowed to upload a snapshot.
         applyLayout(serverLayout, null, false);
         enforceLockedBindings(false);
         sendSnapshot();
@@ -111,19 +105,16 @@ public final class RandomKeysFabricClient implements ClientModInitializer {
         if (binding == null) return;
         InputUtil.Key next = decodeKey(keyToken);
         if (next == null) return;
-
         releaseAllKeys();
         binding.setBoundKey(next);
         lockedLayout.put(id, next);
         KeyBinding.updateKeysByCode();
         releaseAllKeys();
-
         MinecraftClient client = MinecraftClient.getInstance();
         if (client.player != null) {
             client.player.sendMessage(Text.translatable("random_keys_survival.message.key_changed",
                     Text.translatable(binding.getTranslationKey()), displayKey(binding)), true);
         }
-        sendSnapshot();
     }
 
     private static void applyLayout(Map<String, String> map, String donor, boolean announce) {
@@ -144,7 +135,6 @@ public final class RandomKeysFabricClient implements ClientModInitializer {
         if (announce && donor != null && client.player != null) {
             client.player.sendMessage(Text.translatable("random_keys_survival.message.layout_received", donor), true);
         }
-        if (announce) sendSnapshot();
     }
 
     private static void enforceLockedBindings(boolean warn) {
@@ -209,7 +199,6 @@ public final class RandomKeysFabricClient implements ClientModInitializer {
             } catch (IllegalArgumentException ignored) {
             }
         }
-        // Compatibility with early snapshots that used translation keys.
         try {
             return InputUtil.fromTranslationKey(token);
         } catch (IllegalArgumentException ignored) {
@@ -220,7 +209,6 @@ public final class RandomKeysFabricClient implements ClientModInitializer {
     private static void renderHud(DrawContext context, float tickDelta) {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client.player == null || client.options == null || client.options.hudHidden) return;
-
         List<String> leftIds = new ArrayList<>();
         List<String> rightIds = new ArrayList<>();
         for (String id : LEFT_HUD_KEYS) if (enabledKeys.contains(id) && findBinding(id) != null) leftIds.add(id);
@@ -230,7 +218,6 @@ public final class RandomKeysFabricClient implements ClientModInitializer {
             if (findBinding(id) != null) rightIds.add(id);
         }
         if (leftIds.isEmpty() && rightIds.isEmpty()) return;
-
         int padding = 5;
         int gap = 10;
         int lineHeight = client.textRenderer.fontHeight + 2;
@@ -243,7 +230,6 @@ public final class RandomKeysFabricClient implements ClientModInitializer {
         int y = 6;
         int height = rows * lineHeight + padding * 2;
         context.fill(x - 2, y - 2, context.getScaledWindowWidth() - 4, y + height, 0x88000000);
-
         int leftX = x + padding;
         int rightX = leftX + leftWidth + columnGap;
         drawHudColumn(context, client, leftIds, leftX, y + padding, lineHeight);
@@ -272,9 +258,7 @@ public final class RandomKeysFabricClient implements ClientModInitializer {
     }
 
     private static Text hudLine(KeyBinding binding) {
-        return Text.translatable(binding.getTranslationKey()).copy()
-                .append(Text.literal(": "))
-                .append(displayKey(binding));
+        return Text.translatable(binding.getTranslationKey()).copy().append(Text.literal(": ")).append(displayKey(binding));
     }
 
     private static Text displayKey(KeyBinding binding) {
@@ -293,9 +277,7 @@ public final class RandomKeysFabricClient implements ClientModInitializer {
     private static KeyBinding findBinding(String translationKey) {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client.options == null) return null;
-        for (KeyBinding binding : client.options.allKeys) {
-            if (binding.getTranslationKey().equals(translationKey)) return binding;
-        }
+        for (KeyBinding binding : client.options.allKeys) if (binding.getTranslationKey().equals(translationKey)) return binding;
         return null;
     }
 
